@@ -13,14 +13,14 @@ def curl(url):
     return c
 
 def printresults(results):
-    print('time_namelookup: {0}'.format(results[0]))
-    print('time_connect: {0}'.format(results[1]))
-    print('time_appconnect: {0}'.format(results[2]))
-    print('time_pretransfer: {0}'.format(results[3]))
-    print('time_redirect: {0}'.format(results[4]))
-    print('time_starttransfer: {0}'.format(results[5]))
-    print('time to download: {0}'.format(results[6]))
-    print('time_total: {0}'.format(results[7]))
+    print('time_namelookup: {:.20f}'.format(results[0]))
+    print('time_connect: {:.20f}'.format(results[1]))
+    print('time_appconnect: {:.20f}'.format(results[2]))
+    print('time_pretransfer: {:.20f}'.format(results[3]))
+    print('time_redirect: {:.20f}'.format(results[4]))
+    print('time_starttransfer: {:.20f}'.format(results[5]))
+    print('time to download: {:.20f}'.format(results[6]))
+    print('time_total: {:.20f}'.format(results[7]))
 
 # Turn data from cumulative seconds to individual seconds
 def fixdata(D):
