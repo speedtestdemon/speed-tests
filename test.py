@@ -24,13 +24,16 @@ def printresults(results):
 
 # Turn data from cumulative seconds to individual seconds
 def fixdata(D):
-  D[6] -= D[5]
-  D[5] -= D[3]
-  D[3] -= D[2]
-  D[2] -= D[1]
-  D[1] -= D[0]
-  return D
-
+    i = len(D) - 3
+    cumulativetime = D[ i+1 ]
+    cur_i = i+1 # we start setting values at 2nd to last num.
+    while i >= 0:
+        if D[i] > 0:
+            D[cur_i] = cumulativetime - D[i] # calculates new value for cur_i
+            cumulativetime = D[i] # updates the new cumulative time.
+            cur_i = i
+        i -= 1
+    return D
 
 print('-------------------------------------------------------------')
 print('Testing "1st Download Speed"')
