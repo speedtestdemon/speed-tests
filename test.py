@@ -10,6 +10,7 @@ url = sys.argv[1]
 headers = io.BytesIO()
 
 def curl(url):
+    global headers
     headers = io.BytesIO()
     c = pycurl.Curl()
     c.setopt(c.URL, url)
