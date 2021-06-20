@@ -1,14 +1,20 @@
 import pycurl
+import io
 import sys
+import time
  
 if len(sys.argv) != 2:
     raise ValueError('Please provide a url')
 url = sys.argv[1]
 
+headers = io.BytesIO()
+
 def curl(url):
+    headers = io.BytesIO()
     c = pycurl.Curl()
     c.setopt(c.URL, url)
     c.setopt(c.NOBODY, 1)
+    c.setopt(c.HEADERFUNCTION, headers.write)
     c.perform()
     return c
 
@@ -35,23 +41,29 @@ def fixdata(D):
         i -= 1
     return D
 
-print('-------------------------------------------------------------')
-print('Testing "1st Download Speed"')
-print('-------------------------------------------------------------')
-c = curl(url)
-data = [c.getinfo(c.NAMELOOKUP_TIME),
-        c.getinfo(c.CONNECT_TIME),
-        c.getinfo(c.APPCONNECT_TIME),
-        c.getinfo(c.PRETRANSFER_TIME),
-        c.getinfo(c.REDIRECT_TIME),
-        c.getinfo(c.STARTTRANSFER_TIME),
-        c.getinfo(c.TOTAL_TIME),
-        c.getinfo(c.TOTAL_TIME) ]
-data = fixdata(data)
-printresults(data)
+# This is done for "cold cache test" and "warm cache test".
+def singlecurltest(url):
+    c = curl(url)
+    print('Got headers:')
+    print(headers.getvalue().decode("utf-8"))
+    data = [c.getinfo(c.NAMELOOKUP_TIME),
+            c.getinfo(c.CONNECT_TIME),
+            c.getinfo(c.APPCONNECT_TIME),
+            c.getinfo(c.PRETRANSFER_TIME),
+            c.getinfo(c.REDIRECT_TIME),
+            c.getinfo(c.STARTTRANSFER_TIME),
+            c.getinfo(c.TOTAL_TIME),
+            c.getinfo(c.TOTAL_TIME) ]
+    data = fixdata(data)
+    printresults(data)
 
 print('-------------------------------------------------------------')
-print('Testing "Cached Downloads Speeds"')
+print('Testing "Cold cache speed"')
+print('-------------------------------------------------------------')
+singlecurltest(url)
+
+print('-------------------------------------------------------------')
+print('Testing "Hot cache speed"')
 print('-------------------------------------------------------------')
 
 # url = "https://d3va53q3li7xt1.cloudfront.net/wp-content/uploads/2021/05/shoeb-1024x576.png"
@@ -85,3 +97,10 @@ for i in range(len(total_sum)):
 
 print('{0} requests done. Average:'.format(n))
 printresults(results)
+
+
+print('-------------------------------------------------------------')
+print('Testing "Warm cache speed"')
+print('-------------------------------------------------------------')
+time.sleep(1800) # 1800 seconds == 0.5 hr
+singlecurltest(url)
