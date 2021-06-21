@@ -12,11 +12,14 @@ headers = io.BytesIO()
 def curl(url):
     global headers
     headers = io.BytesIO()
+    buf = io.BytesIO() # We need to measure download time.
     c = pycurl.Curl()
     c.setopt(c.URL, url)
-    c.setopt(c.NOBODY, 1)
     c.setopt(c.HEADERFUNCTION, headers.write)
+    c.setopt(c.WRITEFUNCTION, buf.write)
     c.perform()
+    # Sanity check that we got a download.
+    # print('download size', len(buf.getvalue()))
     return c
 
 def printresults(results):
@@ -31,6 +34,7 @@ def printresults(results):
 
 # Turn data from cumulative seconds to individual seconds
 def fixdata(D):
+    # return D # if you want to debug the raw curl numbers.
     i = len(D) - 3
     cumulativetime = D[ i+1 ]
     cur_i = i+1 # we start setting values at 2nd to last num.
@@ -103,5 +107,6 @@ printresults(results)
 print('-------------------------------------------------------------')
 print('Testing "Warm cache speed"')
 print('-------------------------------------------------------------')
+print('Sleeping for 0.5 hr to move cache from hot to warm')
 time.sleep(1800) # 1800 seconds == 0.5 hr
 singlecurltest(url)
