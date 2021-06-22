@@ -15,6 +15,9 @@ def curl(url):
     buf = io.BytesIO() # We need to measure download time.
     c = pycurl.Curl()
     c.setopt(c.URL, url)
+    c.setopt(c.DNS_CACHE_TIMEOUT,0) # disable dns cache.
+    c.setopt(c.FORBID_REUSE,1) # disable dns cache.
+    c.setopt(c.FRESH_CONNECT,1) # disable dns cache.
     c.setopt(c.HEADERFUNCTION, headers.write)
     c.setopt(c.WRITEFUNCTION, buf.write)
     c.perform()
