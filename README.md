@@ -16,9 +16,14 @@ Here is a shell script of how the speed test is run:
 
 ```
 speedtest() {
-  curl -w "@curl-format.txt" -o /dev/null -s $@
+  curl -w "@curl-format.txt" -o tmp -s $@
 }
 ```
+
+Please note that you do NOT want to `-o /dev/null`, as this will make curl
+will cleverly skip the data transfer (i.e. download) phase. Which will throw
+off your speed test measurement. So it is important to have `-o tmp` to
+actually download the file.
 
 ## the measurement
 
