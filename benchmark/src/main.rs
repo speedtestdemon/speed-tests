@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut minutes: u8 = 0;
 
-    while minutes < 1{
+    while minutes < 30{
         if using_vpn.load(Ordering::Relaxed) {
             return Ok(());
         }
