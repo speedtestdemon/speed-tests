@@ -1,5 +1,5 @@
 use curl::easy::Easy;
-use std::{thread, time::Duration, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use std::{thread, io::Read, time::Duration, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 
 #[cfg(target_family = "unix")]
 use rustc_hash::FxHashMap;
@@ -7,20 +7,32 @@ use rustc_hash::FxHashMap;
 use sysinfo::{System, SystemExt, NetworkExt};
 
 const URL: &str = "CDN_URL_GOES_HERE";
+const COLLECT_URL: &str = "https://origin.speedtestdemon.com/collect.php";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // The vector that'll contain all results i.e cold, hot and warm
+    let mut end_results: Vec<String> = vec![];
+
     let using_vpn = Arc::new(AtomicBool::new(false));
+    let finished = Arc::new(AtomicBool::new(false));
 
-    let using_vpn_clone = using_vpn.clone(); 
+    let using_vpn_clone = using_vpn.clone();
+    let finished_clone = finished.clone();
 
-    let join = thread::spawn(move || vpn_check(&using_vpn_clone));
+    let vpn_check_thread = thread::spawn(move || vpn_check(&using_vpn_clone, &finished_clone));
 
     let cold_cache = make_request()?;
-    
-    println!(
-        "-------------------- Cold Cache --------------------\n{}\n-------------------- Cold Cache --------------------\n", 
+
+    let cold_cache_result = format!(
+        "-------------------- Cold Cache --------------------\n{}\n-------------------- Cold Cache End --------------------\n", 
         cold_cache
     );
+
+    println!("{}", cold_cache_result);
+
+    end_results.push(cold_cache_result);
+
+    drop(cold_cache);
 
     let mut results_vec: Vec<CurlResult> = vec![];
 
@@ -46,16 +58,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     hot_cache.starttransfer_time /= n;
     hot_cache.total_time /= n;
     
-    println!(
-        "-------------------- Hot Cache --------------------\n{}\n-------------------- Hot Cache --------------------", 
+    let hot_cache_result = format!(
+        "-------------------- Hot Cache --------------------\n{}\n-------------------- Hot Cache End --------------------", 
         hot_cache
     );
     
+    println!("{}", hot_cache_result);
+
+    end_results.push(hot_cache_result);
+    
+    drop(hot_cache);
+
     let mut minutes: u8 = 0;
 
-    while minutes < 30{
+    while minutes < 1{
         if using_vpn.load(Ordering::Relaxed) {
-            println!("Using VPN. ABORTING MISSION!!");
             return Ok(());
         }
         // Wait for half an hour for cache to get warm
@@ -65,19 +82,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let warm_cache = make_request()?;
     
-    println!(
-        "-------------------- Warm Cache --------------------\n{}\n-------------------- Warm Cache --------------------", 
+    let warm_cache_result = format!(
+        "-------------------- Warm Cache --------------------\n{}\n-------------------- Warm Cache End --------------------", 
         warm_cache
     );
+
+    end_results.push(warm_cache_result);
+
+    drop(warm_cache);
+    
+    let request_body = end_results.join("\n");
+
+    let mut bytes = request_body.as_bytes();
+
+    let mut handle = Easy::new();
+
+    handle.url(COLLECT_URL)?;
+
+    handle.post(true)?;
+
+    let mut transfer = handle.transfer();
+
+    transfer.read_function(|into| Ok(bytes.read(into).unwrap()))?;
+
+    transfer.perform()?;
+    
+    finished.store(true, Ordering::Relaxed);
+
+    println!("Benchmarking Done.");
+    
+    vpn_check_thread.join().expect("VPN Check Thread panicked");
 
     Ok(())
 }
 
 #[cfg(target_family = "unix")]
-fn vpn_check(atomic_bool: &AtomicBool) {
+fn vpn_check(atomic_bool: &AtomicBool, finished: &AtomicBool) {
     let mut system = System::new();
     let mut track_map: FxHashMap<String, (u64, u64)> = FxHashMap::default();
-    loop {
+
+    while !finished.load(Ordering::Relaxed) {
         if atomic_bool.load(Ordering::Relaxed) {
             println!("VPN Detected.");
             break;
@@ -108,7 +152,7 @@ fn vpn_check(atomic_bool: &AtomicBool) {
 }
 
 #[cfg(target_family = "windows")]
-fn vpn_check(atomic_bool: &AtomicBool){
+fn vpn_check(atomic_bool: &AtomicBool, _: &AtomicBool){
     for adapter in ipconfig::get_adapters().expect("Couldn't get adapters") {
         if adapter.if_type() == ipconfig::IfType::Unsupported || adapter.if_type() == ipconfig::IfType::Ppp{
             if adapter.oper_status() == ipconfig::OperStatus::IfOperStatusUp {
@@ -188,12 +232,12 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
         transfer.write_function(|data| {
             buffer.extend_from_slice(data);
             Ok(data.len())
-        }).unwrap();
+        })?;
 
         transfer.header_function(|header_data| {
             headers.extend_from_slice(header_data);
             true
-        }).unwrap();
+        })?;
         transfer.perform()?;
     }
 
