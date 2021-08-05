@@ -1,5 +1,6 @@
 use curl::easy::Easy;
-use std::{thread, io::Read, time::Duration, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use lazy_static::lazy_static;
+use std::{thread, io::Read, time::{Duration, Instant}, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 
 #[cfg(target_family = "unix")]
 use rustc_hash::FxHashMap;
@@ -8,6 +9,7 @@ use sysinfo::{System, SystemExt, NetworkExt};
 
 const URL: &str = "https://cdnspeeds.club/wp-content/uploads/2021/08/cf-4-1024x576.png";
 const COLLECT_URL: &str = "https://origin.speedtestdemon.com/collect.php";
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The vector that'll contain all results i.e cold, hot and warm
@@ -175,6 +177,7 @@ struct CurlResult {
     pub starttransfer_time: Duration,
     pub total_time: Duration,
     pub download_time: Duration,
+    pub speed: usize,
     pub bytes: Vec<u8>
 }
 
@@ -214,6 +217,7 @@ impl std::ops::Add for CurlResult {
             starttransfer_time: self.starttransfer_time + other.starttransfer_time,
             total_time: self.total_time + other.total_time,
             download_time: self.download_time + other.download_time,
+            speed: self.speed + other.speed,
             bytes: self.bytes
         }
     }
@@ -222,7 +226,7 @@ impl fmt::Display for CurlResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}\nName Lookup Time: {}ms | {}ns\nConnect Time: {}ms | {}ns\nApp Connect Time: {}ms | {}ns\nPretransfer Time: {}ms | {}ns\nRedirect Time: {}ms | {}ns\nStartTransfer Time: {}ms | {}ns\nDownload Time: {}ms | {}ns\nTotal Time: {}ms | {}ns\nDownloaded: {} bytes",
+            "{}\nName Lookup Time: {}ms | {}ns\nConnect Time: {}ms | {}ns\nApp Connect Time: {}ms | {}ns\nPretransfer Time: {}ms | {}ns\nRedirect Time: {}ms | {}ns\nStartTransfer Time: {}ms | {}ns\nDownload Time: {}ms | {}ns\nTotal Time: {}ms | {}ns\nDownloaded: {} bytes\nSpeed: {} Mbps",
             self.headers,
             self.namelookup_time.as_millis(),
             self.namelookup_time.as_nanos(),
@@ -240,7 +244,8 @@ impl fmt::Display for CurlResult {
             self.download_time.as_nanos(),
             self.total_time.as_millis(),
             self.total_time.as_nanos(),
-            self.bytes.len()
+            self.bytes.len(),
+            self.speed
                 )
     } 
 }
@@ -251,10 +256,12 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
     let mut buffer: Vec<u8> = vec![];
 
     let mut headers: Vec<u8> = vec![];
-
+    
     handle.url(URL)?;
+    
     {
         let mut transfer = handle.transfer();
+        
         transfer.write_function(|data| {
             buffer.extend_from_slice(data);
             Ok(data.len())
@@ -264,9 +271,10 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
             headers.extend_from_slice(header_data);
             true
         })?;
+
         transfer.perform()?;
     }
-
+    
     let mut result = CurlResult{
         headers: String::from_utf8_lossy(&headers).to_string(),
         namelookup_time: handle.namelookup_time()?,
@@ -277,10 +285,13 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
         starttransfer_time: handle.starttransfer_time()?,
         total_time: handle.total_time()?,
         download_time: handle.total_time()?,
+        speed: 0,
         bytes: buffer
     };
     
     result.normalize();
+    
+    result.speed = ((result.bytes.len() as f64 * 0.000008) / result.download_time.as_secs_f64()) as usize; 
 
     Ok(result)
 
