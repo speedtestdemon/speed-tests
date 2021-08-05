@@ -1,6 +1,5 @@
 use curl::easy::Easy;
-use lazy_static::lazy_static;
-use std::{thread, io::Read, time::{Duration, Instant}, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use std::{thread, io::Read, time::Duration, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 
 #[cfg(target_family = "unix")]
 use rustc_hash::FxHashMap;
@@ -291,7 +290,7 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
     
     result.normalize();
     
-    result.speed = ((result.bytes.len() as f64 * 0.000008) / result.download_time.as_secs_f64()) as usize; 
+    result.speed = ((result.bytes.len() as f32 * 0.000008) / result.download_time.as_secs_f32()) as usize; 
 
     Ok(result)
 
