@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 #[cfg(target_family = "unix")]
 use sysinfo::{System, SystemExt, NetworkExt};
 
-const URL: &str = "CDN_URL_GOES_HERE";
+const URL: &str = "https://cdnspeeds.club/wp-content/uploads/2021/08/cf-4-1024x576.png";
 const COLLECT_URL: &str = "https://origin.speedtestdemon.com/collect.php";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,6 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     hot_cache.pretransfer_time /= n;
     hot_cache.redirect_time /= n;
     hot_cache.starttransfer_time /= n;
+    hot_cache.download_time /= n;
     hot_cache.total_time /= n;
     
     let hot_cache_result = format!(
@@ -173,7 +174,31 @@ struct CurlResult {
     pub redirect_time: Duration,
     pub starttransfer_time: Duration,
     pub total_time: Duration,
+    pub download_time: Duration,
     pub bytes: Vec<u8>
+}
+
+impl CurlResult {
+    // Transform cumulative seconds into individual seconds
+    pub fn normalize(&mut self){
+        self.download_time -= self.starttransfer_time;
+
+        if self.starttransfer_time.as_nanos() > 0{
+        self.starttransfer_time -= self.pretransfer_time;
+        }
+        if self.redirect_time.as_nanos() > 0{
+            self.redirect_time -= self.redirect_time;
+        }
+        if self.pretransfer_time.as_nanos() > 0 {
+            self.pretransfer_time -= self.appconnect_time;
+        }
+        if self.appconnect_time.as_nanos() > 0 {
+            self.appconnect_time -= self.connect_time;
+        }
+        if self.connect_time.as_nanos() > 0 {
+            self.connect_time -= self.namelookup_time; 
+        }
+    }
 }
 
 impl std::ops::Add for CurlResult {
@@ -188,6 +213,7 @@ impl std::ops::Add for CurlResult {
             redirect_time: self.redirect_time + other.redirect_time,
             starttransfer_time: self.starttransfer_time + other.starttransfer_time,
             total_time: self.total_time + other.total_time,
+            download_time: self.download_time + other.download_time,
             bytes: self.bytes
         }
     }
@@ -210,8 +236,8 @@ impl fmt::Display for CurlResult {
             self.redirect_time.as_nanos(),
             self.starttransfer_time.as_millis(),
             self.starttransfer_time.as_nanos(),
-            self.total_time.as_millis(),
-            self.total_time.as_nanos(),
+            self.download_time.as_millis(),
+            self.download_time.as_nanos(),
             self.total_time.as_millis(),
             self.total_time.as_nanos(),
             self.bytes.len()
@@ -241,7 +267,7 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
         transfer.perform()?;
     }
 
-    let result = CurlResult{
+    let mut result = CurlResult{
         headers: String::from_utf8_lossy(&headers).to_string(),
         namelookup_time: handle.namelookup_time()?,
         connect_time: handle.connect_time()?,
@@ -250,8 +276,11 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
         redirect_time: handle.redirect_time()?,
         starttransfer_time: handle.starttransfer_time()?,
         total_time: handle.total_time()?,
+        download_time: handle.total_time()?,
         bytes: buffer
     };
+    
+    result.normalize();
 
     Ok(result)
 
