@@ -10,6 +10,7 @@ opt-level = 3
 codegen-units = 1
 
 [dependencies]
+anyhow = "1.0.42"
 curl = { version = "0.4.38", features = ["static-ssl", "static-curl"] }
 
 [target.'cfg(windows)'.dependencies]

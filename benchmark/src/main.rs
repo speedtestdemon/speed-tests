@@ -1,31 +1,57 @@
 use curl::easy::Easy;
-use std::{thread, io::Read, time::Duration, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use std::{thread::{self, JoinHandle}, env, io::Read, time::Duration, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
 
 #[cfg(target_family = "unix")]
 use rustc_hash::FxHashMap;
 #[cfg(target_family = "unix")]
 use sysinfo::{System, SystemExt, NetworkExt};
 
-const URL: &str = "https://cdnspeeds.club/wp-content/uploads/2021/08/cf-4-1024x576.png";
 const COLLECT_URL: &str = "https://origin.speedtestdemon.com/collect.php";
 
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // The vector that'll contain all results i.e cold, hot and warm
-    let mut end_results: Vec<String> = vec![];
-
+fn main() -> Result<(), anyhow::Error> {
     let using_vpn = Arc::new(AtomicBool::new(false));
     let finished = Arc::new(AtomicBool::new(false));
 
     let using_vpn_clone = using_vpn.clone();
     let finished_clone = finished.clone();
 
+
     let vpn_check_thread = thread::spawn(move || vpn_check(&using_vpn_clone, &finished_clone));
 
-    let cold_cache = make_request()?;
+    let mut urls: Vec<String> = env::args().collect();
+
+    let mut thread_handles: Vec<JoinHandle<_>> = vec![];
+
+    urls.remove(0);
+
+    for url in urls {
+        let using_vpn_clone = using_vpn.clone();
+        let handle = thread::spawn(move || benchmark(url, &using_vpn_clone));
+        thread_handles.push(handle);
+        thread::sleep(Duration::from_secs(60));
+    }
+
+    for handle in thread_handles {
+        handle.join().unwrap().unwrap();
+    }
+
+    finished.store(true, Ordering::Relaxed);
+
+    vpn_check_thread.join().unwrap();
+
+    Ok(())
+}
+
+fn benchmark(url: impl AsRef<str>, using_vpn: &AtomicBool) -> Result<(), anyhow::Error> {
+    let url = url.as_ref();
+    // The vector that'll contain all results i.e cold, hot and warm
+    let mut end_results: Vec<String> = vec![];
+
+    let cold_cache = make_request(url)?;
 
     let cold_cache_result = format!(
-        "-------------------- Cold Cache --------------------\n{}\n-------------------- Cold Cache End --------------------\n", 
+        "\n{}\n-------------------- Cold Cache --------------------\n{}\n-------------------- Cold Cache End --------------------\n", 
+        url,
         cold_cache
     );
 
@@ -40,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let n = 10;
 
     for _ in 0..n {
-        let result = make_request()?;
+        let result = make_request(url)?;
 
         results_vec.push(result);
     }
@@ -59,21 +85,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     hot_cache.starttransfer_time /= n;
     hot_cache.download_time /= n;
     hot_cache.total_time /= n;
-    
+
     let hot_cache_result = format!(
-        "-------------------- Hot Cache --------------------\n{}\n-------------------- Hot Cache End --------------------", 
+        "\n{}\n-------------------- Hot Cache --------------------\n{}\n-------------------- Hot Cache End --------------------", 
+        url,
         hot_cache
     );
-    
+
     println!("{}", hot_cache_result);
 
     end_results.push(hot_cache_result);
-    
+
     drop(hot_cache);
 
     let mut minutes: u8 = 0;
 
-    while minutes < 30{
+    println!("Sleeping for 30 minutes\n");
+
+    while minutes < 30 {
         if using_vpn.load(Ordering::Relaxed) {
             return Ok(());
         }
@@ -82,17 +111,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         minutes += 1;
     }
 
-    let warm_cache = make_request()?;
-    
+    let warm_cache = make_request(url)?;
+
     let warm_cache_result = format!(
-        "-------------------- Warm Cache --------------------\n{}\n-------------------- Warm Cache End --------------------", 
+        "\n{}\n-------------------- Warm Cache --------------------\n{}\n-------------------- Warm Cache End --------------------", 
+        url,
         warm_cache
     );
 
     end_results.push(warm_cache_result);
 
     drop(warm_cache);
-    
+
     let request_body = end_results.join("\n");
 
     let mut bytes = request_body.as_bytes();
@@ -108,12 +138,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     transfer.read_function(|into| Ok(bytes.read(into).unwrap()))?;
 
     transfer.perform()?;
-    
-    finished.store(true, Ordering::Relaxed);
 
-    println!("Benchmarking Done.");
-    
-    vpn_check_thread.join().expect("VPN Check Thread panicked");
+    println!("Benchmarked {} successfully.", url);
 
     Ok(())
 }
@@ -186,10 +212,10 @@ impl CurlResult {
         self.download_time -= self.starttransfer_time;
 
         if self.starttransfer_time.as_nanos() > 0{
-        self.starttransfer_time -= self.pretransfer_time;
+            self.starttransfer_time -= self.pretransfer_time;
         }
         if self.redirect_time.as_nanos() > 0{
-            self.redirect_time -= self.redirect_time;
+            self.redirect_time -= self.starttransfer_time;
         }
         if self.pretransfer_time.as_nanos() > 0 {
             self.pretransfer_time -= self.appconnect_time;
@@ -249,18 +275,18 @@ impl fmt::Display for CurlResult {
     } 
 }
 
-fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
+fn make_request(url: &str) -> Result<CurlResult, anyhow::Error> {
     let mut handle = Easy::new();
 
     let mut buffer: Vec<u8> = vec![];
 
     let mut headers: Vec<u8> = vec![];
-    
-    handle.url(URL)?;
-    
+
+    handle.url(url)?;
+
     {
         let mut transfer = handle.transfer();
-        
+
         transfer.write_function(|data| {
             buffer.extend_from_slice(data);
             Ok(data.len())
@@ -273,7 +299,7 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
 
         transfer.perform()?;
     }
-    
+
     let mut result = CurlResult{
         headers: String::from_utf8_lossy(&headers).to_string(),
         namelookup_time: handle.namelookup_time()?,
@@ -287,9 +313,9 @@ fn make_request() -> Result<CurlResult, Box<dyn std::error::Error>> {
         speed: 0,
         bytes: buffer
     };
-    
+
     result.normalize();
-    
+
     result.speed = ((result.bytes.len() as f32 * 0.000008) / result.download_time.as_secs_f32()) as usize; 
 
     Ok(result)
