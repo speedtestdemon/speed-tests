@@ -4,12 +4,12 @@
 
 ## For Windows
 
-Simply double click on the "run" file.
+Simply double click on the **"run"** file.
 
 ## For Mac OS
 
-Simply double click on the "run" file.
+Simply double click on the **"run"** file.
 
 ## For Linux
 
-Execute the "run.sh" script on the command-line.
+Execute the **"run.sh"** script on the command-line.
