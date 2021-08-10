@@ -19,7 +19,7 @@ fn main() -> Result<(), anyhow::Error> {
     let vpn_check_thread = thread::spawn(move || vpn_check(&using_vpn_clone, &finished_clone));
 
     let mut urls: Vec<String> = env::args().collect();
-
+    
     let mut thread_handles: Vec<JoinHandle<_>> = vec![];
 
     urls.remove(0);
