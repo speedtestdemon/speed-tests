@@ -1,5 +1,13 @@
 use curl::easy::Easy;
-use std::{thread::{self, JoinHandle}, env, io::Read, time::Duration, fmt, sync::{Arc, atomic::{AtomicBool, Ordering}}};
+use std::{
+    thread::{self, JoinHandle}, 
+    env, 
+    io::{Write, Read}, 
+    fs::OpenOptions,
+    time::Duration, 
+    fmt, 
+    sync::{Arc, atomic::{AtomicBool, Ordering}}
+};
 
 #[cfg(target_family = "unix")]
 use rustc_hash::FxHashMap;
@@ -124,8 +132,15 @@ fn benchmark(url: impl AsRef<str>, using_vpn: &AtomicBool) -> Result<(), anyhow:
     drop(warm_cache);
 
     let request_body = end_results.join("\n");
+    
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("results.txt")?;
 
     let mut bytes = request_body.as_bytes();
+    
+    file.write(bytes)?;
 
     let mut handle = Easy::new();
 
